@@ -94,3 +94,8 @@ input[type=checkbox]{flex-shrink:0}
 .month-cash-grid .month-cash-row.total>span{color:var(--blue)}
 @media(min-width:480px){.monthly-card>.section-title{flex-wrap:nowrap}.monthly-card .month-select{width:auto;justify-content:flex-end;white-space:nowrap}}
 @media(max-width:359px){.month-cash-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.month-cash-grid .month-cash-row strong{font-size:14px}#bonus-months-fields label{font-size:13px}}
+/* Field names remain larger than every editable value. */
+.inputs label,.inputs .compact-grid label,.inputs .social-panel .two-col label,#bonus-months-fields label,.inputs .deduction-top label,.inputs .bonus-input-title{font-size:15px;font-weight:500;line-height:1.5}
+.inputs input:not([type=checkbox]),.inputs select{font-size:14px}
+.inputs .deduction-top .deduction-name{display:inline-block;max-width:100%;vertical-align:middle}
+.inputs .deduction-top small{display:inline-block;max-width:100%;vertical-align:middle;white-space:normal;word-break:normal;overflow-wrap:normal}
