@@ -1,9 +1,9 @@
-import {estimateSide} from './side.mjs?v=20';
-import {applyEquity} from './equity.mjs?v=20';
-import {renderCashFlow} from './cashflow.mjs?v=20';
-import {calculate,round,tax,limits,rates,quick} from './tax.mjs?v=20';
-import {estimateBeijing,estimateCity} from './social.mjs?v=20';
-import {withdrawal} from './withdrawal.mjs?v=20';
+import {estimateSide} from './side.mjs?v=21';
+import {applyEquity} from './equity.mjs?v=21';
+import {renderCashFlow} from './cashflow.mjs?v=21';
+import {calculate,round,tax,limits,rates,quick} from './tax.mjs?v=21';
+import {estimateBeijing,estimateCity} from './social.mjs?v=21';
+import {withdrawal} from './withdrawal.mjs?v=21';
 const $=id=>document.getElementById(id),fmt=n=>Number(n).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}),yuan=n=>'¥ '+fmt(n);
 let mode='annual',lastResult=null,socialDetails=null;
 const months=Array.from({length:12},(_,i)=>i+1);
@@ -12,8 +12,15 @@ const num=(id,val=0,max=1000000000)=>`<input id="${id}" type="number" min="0" ma
 const select=(id,options)=>`<select id="${id}">${options.map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select>`;
 const field=(id,title,input)=>`<div><label for="${id}">${title}</label>${input}</div>`;
 const range=id=>`<div class="range"><span>扣除期间</span><select id="${id}-start" aria-label="${id} 扣除开始月份">${opts(1)}</select><span>至</span><select id="${id}-end" aria-label="${id} 扣除结束月份">${opts()}</select></div>`;
-const block=(id,title,cap,body)=>`<div class="deduction-block"><div class="deduction-top"><label><input id="${id}-on" type="checkbox">${title}</label><span>${cap}</span></div><div class="deduction-body" id="${id}-body" hidden>${body}</div></div>`;
+const block=(id,title,cap,body)=>`<div class="deduction-block"><div class="deduction-top"><label><input id="${id}-on" type="checkbox"><span class="deduction-name">${title}</span> <small>${cap}</small></label></div><div class="deduction-body" id="${id}-body" hidden>${body}</div></div>`;
 $('bonus-month').innerHTML=opts();$('selected-month').innerHTML=opts(9);
+const bonusAmountBox=$('bonus').closest('.two-col');
+bonusAmountBox.insertAdjacentHTML('beforebegin','<div class="bonus-input-header"><h3 class="bonus-input-title">全年一次性奖金</h3><div class="segmented" id="bonus-entry-mode"><button type="button" data-bonus-mode="total" aria-pressed="true">填总金额</button><button type="button" data-bonus-mode="months" aria-pressed="false">按几个月工资</button></div></div><div id="bonus-months-fields" hidden><div class="two-col">'+field('bonus-months','奖金月数（个月）',num('bonus-months',2,120))+field('bonus-base-salary','税前月薪（元）',num('bonus-base-salary',25000))+'</div><label class="bonus-follow"><input id="bonus-follow-salary" type="checkbox" checked> 使用上方工资的平均月薪</label><p class="notice" id="bonus-estimate" role="status"></p></div>');
+$('bonus').parentElement.parentElement.id='bonus-total-field';
+document.querySelector('label[for="bonus"]').textContent='奖金总金额（元）';
+let bonusEntryMode='total';
+$('bonus-entry-mode').addEventListener('click',e=>{const button=e.target.closest('[data-bonus-mode]');if(!button)return;bonusEntryMode=button.dataset.bonusMode;$('bonus-months-fields').hidden=bonusEntryMode!=='months';$('bonus-total-field').hidden=bonusEntryMode==='months';bonusAmountBox.classList.toggle('bonus-month-only',bonusEntryMode==='months');document.querySelectorAll('[data-bonus-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.bonusMode===bonusEntryMode));update();});
+$('bonus-base-salary').addEventListener('input',()=>{$('bonus-follow-salary').checked=false;});
 $('monthly-input').innerHTML=`<div class="uniform-pay"><label for="uniform-salary">统一税前月薪</label><div class="uniform-controls">${num('uniform-salary',25000)}<button type="button" id="fill-salary">填入全部 12 个月</button></div><p class="hint" id="fill-status" role="status">每月工资相同，只需填写一次；填入后仍可修改个别月份。</p></div><div class="compact-grid">${months.map(m=>field('salary-'+m,m+' 月工资',num('salary-'+m,25000))).join('')}</div><p class="hint">填写实际发放月份的税前工资，包含普通绩效与季度奖金；全年一次性奖金单独填写。</p>`;
 
 let workCount=1;
@@ -31,11 +38,11 @@ function employmentInputs(){
 }
 
 $('deductions').innerHTML=`<div class="deduction-section"><div class="section-title"><h2><span>02</span> 税前扣除</h2><span class="tag">基本减除 60,000 元 / 年</span></div>
-<div class="social-panel"><h3>社保与公积金，不用先算金额</h3>
+<div class="social-panel"><h3>社保与公积金</h3><div class="two-col social-basics">
 ${field('social-city','参保城市',select('social-city',[['beijing','北京'],['shanghai','上海'],['guangzhou','广州'],['shenzhen','深圳'],['other','其他城市']]))}
-${field('social-method','你知道哪些信息？',select('social-method',[['estimate','按工资估算'],['manual','直接填每月扣款']]))}
+${field('social-method','填写方式',select('social-method',[['estimate','按工资估算'],['manual','填每月扣款']]))}</div>
 <div id="social-estimate"><div id="custom-rates" hidden><p class="hint" id="city-rate-note"></p><details class="minor-details" id="rate-adjustment"><summary>调整社保比例（可选）</summary><div class="two-col">${field('custom-social-rate','个人社保合计比例 %',num('custom-social-rate','',100))}${field('custom-social-fixed','社保每月固定附加额（没有填 0）',num('custom-social-fixed'))}</div></details></div>
-<div class="two-col">${field('fund-rate','个人公积金比例',select('fund-rate',[[12,'12%'],[11,'11%'],[10,'10%'],[9,'9%'],[8,'8%'],[7,'7%'],[6,'6%'],[5,'5%'],[0,'未缴存 · 0%']]))}${field('employer-fund-rate','单位公积金比例（计入账户缴存）',select('employer-fund-rate',[['same','与个人比例相同'],['unknown','不清楚单位比例'],[12,'12%'],[11,'11%'],[10,'10%'],[9,'9%'],[8,'8%'],[7,'7%'],[6,'6%'],[5,'5%'],[0,'未缴存 · 0%']]))}</div>
+<div class="two-col">${field('fund-rate','个人公积金比例',select('fund-rate',[[12,'12%'],[11,'11%'],[10,'10%'],[9,'9%'],[8,'8%'],[7,'7%'],[6,'6%'],[5,'5%'],[0,'未缴存 · 0%']]))}${field('employer-fund-rate','单位公积金比例',select('employer-fund-rate',[['same','同个人比例'],['unknown','不清楚'],[12,'12%'],[11,'11%'],[10,'10%'],[9,'9%'],[8,'8%'],[7,'7%'],[6,'6%'],[5,'5%'],[0,'未缴存 · 0%']]))}</div>
 
 <div id="sh-supplement" hidden><label><input type="checkbox" id="supplement-on"> 公司有补充公积金</label><div id="supplement-input" hidden>${field('supplement-rate','个人补充公积金比例',select('supplement-rate',[[0,'没有 · 0%'],[1,'1%'],[2,'2%'],[3,'3%'],[4,'4%'],[5,'5%']]))}</div></div>
 <div id="sz-medical" hidden>${field('medical-tier','医保档次',select('medical-tier',[[1,'一档'],[2,'二档']]))}</div>
@@ -49,15 +56,15 @@ ${field('base-mode','缴费基数怎么确定？',select('base-mode',[['estimate
 </div>
 ${block('housing','住房租金 / 贷款利息','同一年度互斥',field('housing-type','扣除类型与标准',select('housing-type',[[1500,'租金 · 1,500 元/月'],[1100,'租金 · 1,100 元/月'],[800,'租金 · 800 元/月'],[1000,'房贷 · 本人扣除 100%'],[500,'房贷 · 本人扣除 50%']]))+'<p class="hint" id="housing-choice-note"></p>'+range('housing')+'<p class="hint">租金要求本人及配偶在主要工作城市无自有住房，同城夫妻仅一方扣除。贷款须符合首套住房贷款利率条件，最长 240 个月；夫妻同年不能同时享受房租与房贷扣除。</p>')}
 ${block('elder','赡养老人','独生 3,000 / 非独生 ≤1,500',field('elder-type','家庭情况',select('elder-type',[['only','独生子女 · 3,000 元/月'],['shared','非独生子女 · 按约定分摊']]))+'<div id="elder-share-box" hidden>'+field('elder-share','本人每月分摊金额',num('elder-share',1500,1500))+'</div>'+range('elder')+'<p class="hint">被赡养人须年满 60 岁。非独生子女共同分摊 3,000 元/月，本人不超过 1,500 元/月；不按老人数量翻倍。</p>')}
-${block('child','子女教育','每名子女 2,000 元/月','<div class="two-col">'+field('child-count','符合条件的子女数',num('child-count',1,20))+field('child-share','本人扣除比例',select('child-share',[[1,'100%'],[.5,'50%']]))+'</div>'+range('child')+'<p class="hint">适用于满 3 岁学前教育及全日制学历教育。此组子女按相同期间与分摊比例计算；与婴幼儿照护不重复计算同一孩子同一月份。</p>')}
-${block('infant','3 岁以下婴幼儿照护','每名婴幼儿 2,000 元/月','<div class="two-col">'+field('infant-count','符合条件的婴幼儿数',num('infant-count',1,20))+field('infant-share','本人扣除比例',select('infant-share',[[1,'100%'],[.5,'50%']]))+'</div>'+range('infant')+'<p class="hint">父母一方扣除 100%，或双方各扣除 50%。孩子满 3 岁的当月应转入子女教育，不能同时享受两项。</p>')}
+${block('child','子女教育','每人 2,000 元/月','<div class="two-col">'+field('child-count','符合条件的子女数',num('child-count',1,20))+field('child-share','本人扣除比例',select('child-share',[[1,'100%'],[.5,'50%']]))+'</div>'+range('child')+'<p class="hint">适用于满 3 岁学前教育及全日制学历教育。此组子女按相同期间与分摊比例计算；与婴幼儿照护不重复计算同一孩子同一月份。</p>')}
+${block('infant','3 岁以下婴幼儿照护','每人 2,000 元/月','<div class="two-col">'+field('infant-count','符合条件的婴幼儿数',num('infant-count',1,20))+field('infant-share','本人扣除比例',select('infant-share',[[1,'100%'],[.5,'50%']]))+'</div>'+range('infant')+'<p class="hint">父母一方扣除 100%，或双方各扣除 50%。孩子满 3 岁的当月应转入子女教育，不能同时享受两项。</p>')}
 ${block('education','继续教育','学历 400 元/月 + 证书 3,600 元/年','<label><input id="degree" type="checkbox"> 境内学历（学位）继续教育</label>'+range('education')+'<label><input id="certificate" type="checkbox"> 当年取得符合条件的职业资格证书</label>'+field('certificate-month','证书扣除申报月份',`<select id="certificate-month">${opts()}</select>`)+ '<p class="hint">同一学历最长 48 个月；职业资格须在规定目录内，同年多本证书不叠加 3,600 元定额。</p>')}
-${block('pension','个人养老金','每年据实扣除，上限 12,000 元',field('pension-amount','全年实际缴存金额',num('pension-amount',12000,12000))+'<div class="two-col">'+field('pension-pay','缴存安排',select('pension-pay',[['spread','每月等额缴存'],...months.map(m=>[m-1,m+' 月一次性缴存'])]))+field('pension-timing','扣除申报方式',select('pension-timing',[['monthly','缴存当月及时申报'],['annual','仅年度汇算申报']]))+'</div><p class="hint">与基本养老保险不同，须缴入个人养老金资金账户。缴存额会从可支配收入扣除；本金仍属于个人养老资产。</p>')}
-${block('insurance','税优商业健康保险','合计上限 200 元/月、2,400 元/年','<p class="hint">仅适用于有税优识别码、符合规定的商业健康保险；普通医疗险、重疾险不自动符合。无需在这里填写识别码。个人养老金账户内买的保险计入个人养老金，不能再在此重复扣除。</p>'+field('insurance-monthly','凭证对应的月度保费合计（系统最多扣除 200 元/月）',num('insurance-monthly',200))+range('insurance')+field('insurance-timing','申报方式',select('insurance-timing',[['annual','年度汇算时申报'],['monthly','单位按月申报扣除']]))+'<p class="hint">按保险凭证填写可扣除月份与月度保费，不把年缴总保费直接填作月保费。多张符合条件的保单合并后共用限额。保费属于生活支出，本工具不从工资到账额另减；节税体现在个税中。</p>')}
+${block('pension','个人养老金','上限 12,000 元/年',field('pension-amount','全年实际缴存金额',num('pension-amount',12000,12000))+'<div class="two-col">'+field('pension-pay','缴存安排',select('pension-pay',[['spread','每月等额缴存'],...months.map(m=>[m-1,m+' 月一次性缴存'])]))+field('pension-timing','扣除申报方式',select('pension-timing',[['monthly','缴存当月及时申报'],['annual','仅年度汇算申报']]))+'</div><p class="hint">与基本养老保险不同，须缴入个人养老金资金账户。缴存额会从可支配收入扣除；本金仍属于个人养老资产。</p>')}
+${block('insurance','税优商业健康保险','上限 2,400 元/年','<p class="hint">仅适用于有税优识别码、符合规定的商业健康保险；普通医疗险、重疾险不自动符合。无需在这里填写识别码。个人养老金账户内买的保险计入个人养老金，不能再在此重复扣除。</p>'+field('insurance-monthly','凭证对应的月度保费合计（系统最多扣除 200 元/月）',num('insurance-monthly',200))+range('insurance')+field('insurance-timing','申报方式',select('insurance-timing',[['annual','年度汇算时申报'],['monthly','单位按月申报扣除']]))+'<p class="hint">按保险凭证填写可扣除月份与月度保费，不把年缴总保费直接填作月保费。多张符合条件的保单合并后共用限额。保费属于生活支出，本工具不从工资到账额另减；节税体现在个税中。</p>')}
 ${block('side','兼职接单 / 稿费 / 许可收入','居民个人综合所得',field('side-labor','全年劳务报酬税前收入（接单、咨询等）',num('side-labor'))+field('side-writing','全年稿酬税前收入',num('side-writing'))+field('side-royalty','全年特许权使用费税前收入',num('side-royalty'))+field('side-schedule','副业收入怎样收到？',select('side-schedule',[['spread','每月差不多 · 按 12 个月均分'],...months.map(m=>[m-1,m+' 月一次收到'])]))+'<p class="hint">劳务和许可收入按收入的 80%、稿酬按 56% 并入年度综合所得。系统自动估算预扣税：按每种收入每月一个计税单位，或所选月份一次取得计算。实际多项目、多付款方、平台特殊预扣或未扣缴时可能不同；全年应纳税额不受收款安排影响，到账现金与退补税为估算。收入按税务申报类别填写；开店、个体户等经营所得不能填作劳务。本版不计算经营所得、增值税及附加税。</p><div id="side-estimate" class="notice"></div>')}
 ${block('equity','公司 RSU / 期权','按你知道的信息估算','<div id="equity-simple">'+field('equity-type','公司给你的是什么？',select('equity-type',[['option','期权 · 将来按约定价格买股票'],['rsu','RSU · 满足条件后拿到股票'],['unknown','不清楚']]))+field('equity-stage','今年进行到哪一步？',select('equity-stage',[['grant','仅授予，未拿到股票 / 行权'],['event','今年已经拿到股票 / 行权'],['plan','想估算将来拿到股票 / 行权']]))+field('equity-granted','共授予多少股 / 份？（不记得可留空）',num('equity-granted',''))+'<div id="equity-expiry-box">'+field('equity-expiry','期权到期日（可不填）','<input type="date" id="equity-expiry">')+'</div><div id="equity-event" hidden>'+field('equity-quantity','这次拿到 / 准备行权多少股？',num('equity-quantity',''))+field('equity-price','当时每股市价 / 预计市价（人民币）',num('equity-price',''))+'<div id="equity-strike-box">'+field('equity-strike','每股买入价（行权价，人民币）',num('equity-strike',''))+'</div></div><div class="notice" id="equity-preview"></div></div><details><summary>已有公司给的计税明细？可选精确核对</summary><label><input type="checkbox" id="equity-exact"> 使用公司明细替代上面的估算</label><div id="equity-exact-fields" hidden>'+'<label><input id="equity-qualified" type="checkbox"> 单位已确认：居民个人、符合上市公司股权激励单独计税政策</label><p class="hint">不是所有 RSU / 期权都适用。未归属授予价值、未行权期权价值不要填写；请用单位确认的本年应税金额，多次归属 / 行权全年合并。未上市公司、跨境任职分摊、境外抵免及出售股票所得不在此入口计算。不符合单独计税的工资性激励应按单位口径并入工资，不能在这里重复计入。</p>'+field('equity-income','本年股权激励应税金额（人民币）',num('equity-income'))+field('equity-paid','股权本年实际已缴税（含扣股抵税）',num('equity-paid'))+field('equity-cash','其中：本人现金支付的税款',num('equity-cash'))+field('equity-month','现金税款支付月份（多次支付暂集中显示）','<select id="equity-month">'+opts()+'</select>')+'<p class="hint">例如卖出部分股票抵税：计入已缴税，不计入本人现金支付。这里不计股票出售回款，也不从银行卡现金重复扣该部分税。</p>'+'</div></details>')}
-${block('annuity','企业年金 / 职业年金','填扣款或比例，抵扣帮你算',field('annuity-mode','你知道哪一种？',select('annuity-mode',[['amount','知道每月从工资扣多少钱'],['rate','只知道个人缴费比例'],['unknown','不知道有没有 / 不清楚金额']]))+'<div id="annuity-inputs"><div id="annuity-amount-box">'+field('annuity-pay','每月从工资扣的年金（元）',num('annuity-pay',''))+'</div><div id="annuity-rate-box" hidden>'+field('annuity-rate','个人缴费比例 %（不是单位比例）',num('annuity-rate',4,100))+'</div>'+range('annuity')+'<details><summary>知道缴费基数或准确抵扣额？可选填写</summary>'+field('annuity-base','年金缴费基数（不知道留空）',num('annuity-base',''))+'<label><input id="annuity-confirmed" type="checkbox"> 我有单位给的可抵扣金额</label><div id="annuity-eligible-box" hidden>'+field('annuity-eligible','每月可抵扣金额',num('annuity-eligible',''))+'</div></details></div><div class="notice" id="annuity-estimate"></div><p class="hint">这是单位提供的补充养老福利，与自己开的个人养老金账户不同；只算个人扣款，单位缴费不用填。基数未知时按有工资月份的平均月薪粗估，扣除暂按基数的 4% 封顶；未核定当地法定基数上限，职业年金的岗位 / 薪级工资基数也可能低于月薪。结果是估算，不是工资条。不要再把这笔钱填进社保合计。</p>')}
-${block('donation','公益慈善捐赠','本版在综合所得年度汇算扣除',field('donation-limited','符合条件的普通限额捐赠（全年）',num('donation-limited'))+field('donation-full','有明确全额扣除政策的捐赠（全年）',num('donation-full'))+'<p class="hint">需通过符合条件的公益组织或国家机关并保留捐赠票据，个人转账救助不自动符合。本版先按综合所得应纳税所得额的 30% 核定普通捐赠，再扣全额捐赠；不重复用于单独计税奖金。不模拟单位月度提前扣除。捐款属于生活支出，不从工资到账额另减。</p>')}
+${block('annuity','企业年金 / 职业年金','填扣款或比例',field('annuity-mode','你知道哪一种？',select('annuity-mode',[['amount','知道每月从工资扣多少钱'],['rate','只知道个人缴费比例'],['unknown','不知道有没有 / 不清楚金额']]))+'<div id="annuity-inputs"><div id="annuity-amount-box">'+field('annuity-pay','每月从工资扣的年金（元）',num('annuity-pay',''))+'</div><div id="annuity-rate-box" hidden>'+field('annuity-rate','个人缴费比例 %（不是单位比例）',num('annuity-rate',4,100))+'</div>'+range('annuity')+'<details><summary>知道缴费基数或准确抵扣额？可选填写</summary>'+field('annuity-base','年金缴费基数（不知道留空）',num('annuity-base',''))+'<label><input id="annuity-confirmed" type="checkbox"> 我有单位给的可抵扣金额</label><div id="annuity-eligible-box" hidden>'+field('annuity-eligible','每月可抵扣金额',num('annuity-eligible',''))+'</div></details></div><div class="notice" id="annuity-estimate"></div><p class="hint">这是单位提供的补充养老福利，与自己开的个人养老金账户不同；只算个人扣款，单位缴费不用填。基数未知时按有工资月份的平均月薪粗估，扣除暂按基数的 4% 封顶；未核定当地法定基数上限，职业年金的岗位 / 薪级工资基数也可能低于月薪。结果是估算，不是工资条。不要再把这笔钱填进社保合计。</p>')}
+${block('donation','公益慈善捐赠','年度汇算扣除',field('donation-limited','符合条件的普通限额捐赠（全年）',num('donation-limited'))+field('donation-full','有明确全额扣除政策的捐赠（全年）',num('donation-full'))+'<p class="hint">需通过符合条件的公益组织或国家机关并保留捐赠票据，个人转账救助不自动符合。本版先按综合所得应纳税所得额的 30% 核定普通捐赠，再扣全额捐赠；不重复用于单独计税奖金。不模拟单位月度提前扣除。捐款属于生活支出，不从工资到账额另减。</p>')}
 
 ${block('medical','大病医疗','仅年度汇算扣除', '<div id="medical-people">'+field('medical-0','本人：医保目录内年度自付金额',num('medical-0'))+'</div><button type="button" id="add-medical" class="add-btn">＋ 添加由本人扣除的配偶 / 未成年子女</button><p class="hint">每位家庭成员分别计算：自付超过 15,000 元的部分，最多扣除 80,000 元。填写已扣除医保报销的目录内自付额，不是医疗总花费；同笔费用不能由夫妻重复扣除。</p>')}
 </div><div id="input-error" class="error" role="alert" hidden></div>`;
@@ -110,9 +117,18 @@ function equityScenario(){
 }
 
 function state(){
- for(const el of document.querySelectorAll('input[type=number]')){if(el.id==='uniform-salary'||el.closest('[hidden]'))continue;if(!el.validity.valid)throw Error('请输入有效的非负金额；人数须为整数，个人养老金及分摊金额不得超过标注上限。');}
+ $('bonus-estimate').textContent='';
+ for(const el of document.querySelectorAll('input[type=number]')){if(el.id==='uniform-salary'||el.id==='bonus-base-salary'&&on('bonus-follow-salary')||el.closest('[hidden]'))continue;if(!el.validity.valid)throw Error('请输入有效的非负金额；人数须为整数，个人养老金及分摊金额不得超过标注上限。');}
  const s={salary:mode==='annual'?split(val('annual')):months.map(m=>val('salary-'+m)),social:on('social-var')?months.map(m=>val('social-'+m)):Array(12).fill(val('social')),pension:Array(12).fill(0),additional:Array(12).fill(0),medical:0,bonus:val('bonus'),bonusMonth:val('bonus-month'),pensionTiming:$('pension-timing').value};
  if(on('work-on'))Object.assign(s,employmentInputs());
+ if(bonusEntryMode==='months'){
+  const count=s.employment?s.employment.filter(Boolean).length:12;
+  if(on('bonus-follow-salary'))$('bonus-base-salary').value=round(s.salary.reduce((a,b)=>a+b,0)/count);
+  for(const id of ['bonus-months','bonus-base-salary'])if($(id).value===''||!$(id).validity.valid)throw Error('请填写有效的奖金月数和税前月薪。');
+  s.bonus=round(val('bonus-months')*val('bonus-base-salary'));
+  if(s.bonus>1000000000)throw Error('奖金总额不能超过 10 亿元。');
+  $('bonus-estimate').textContent=fmt(val('bonus-base-salary'))+' 元 × '+val('bonus-months')+' 个月 = 预计奖金 '+yuan(s.bonus);
+ }
  socialDetails=null;
  if($('social-method').value==='estimate'){
   const employer=$('employer-fund-rate').value;
@@ -194,7 +210,7 @@ function renderMonth(){if(!lastResult)return;const r=lastResult,m=r.months[val('
  const monthlyCash=r.months.map(v=>{const gross=round(v.gross+v.bonus+(v.sideGross||0)),equityCash=r.equity&&r.equity.month===v.month-1?r.equity.cashPaid:0;return {month:v.month,gross,social:v.social,pension:v.pension,annuity:round(gross-v.social-v.pension-v.totalTax-equityCash-v.net),tax:round(v.totalTax+equityCash),deposit:round(v.cashReceived-v.net),cash:v.cashReceived};});
  const columns=[['gross','＋ 税前收入','＋'],['social','− 社保公积金','−'],['pension','− 个人养老金','−'],['annuity','− 企业 / 职业年金','−'],['tax','− 已扣个税','−'],['deposit','＋ 公积金提取到账','＋'],['cash','＝ 预计到账现金','＝']].filter(([k])=>['gross','social','tax','cash'].includes(k)||monthlyCash.some(v=>v[k]!==0));
  const selectedCash=monthlyCash.find(v=>v.month===m.month);
- $('month-summary').innerHTML='<div class="month-equation"><h3>'+m.month+' 月到账怎么算</h3>'+columns.filter(([k])=>['gross','cash'].includes(k)||selectedCash[k]!==0).map(([k,label,sign])=>'<div class="month-cash-row '+(k==='cash'?'total':'')+'"><span>'+label.slice(2)+'</span><strong>'+sign+' '+yuan(selectedCash[k])+'</strong></div>').join('')+'</div>';
+ $('month-summary').innerHTML='<div class="month-equation"><h3>'+m.month+' 月到账怎么算</h3><div class="month-cash-grid">'+columns.filter(([k])=>['gross','cash'].includes(k)||selectedCash[k]!==0).map(([k,label,sign])=>'<div class="month-cash-row '+(k==='cash'?'total':'')+(fmt(selectedCash[k]).length>9?' wide':'')+'"><span>'+label.slice(2)+'</span><strong>'+sign+' '+yuan(selectedCash[k])+'</strong></div>').join('')+'</div></div>';
  document.querySelector('.monthly-card thead tr').innerHTML='<th>月份</th>'+columns.map(([,label])=>'<th>'+label+'</th>').join('');
  $('rows').innerHTML=monthlyCash.map(v=>'<tr class="'+(v.month===m.month?'selected':'')+'"><td>'+v.month+' 月</td>'+columns.map(([k,,sign])=>'<td>'+sign+' '+fmt(v[k])+'</td>').join('')+'</tr>').join('');
 
@@ -214,7 +230,7 @@ $('rules').insertAdjacentHTML('beforeend',`<details><summary>北京社保、公�
 
 
 $('rules').insertAdjacentHTML('beforeend',`<details><summary>城市缴费标准与来源 · 2026-09-21</summary><p>各险种分别保底、封顶；相同月份合并展示。上海基本公积金与补充分别取整。</p><p>广州、深圳养老沿用最近公布标准；失业费率 0.2% 及上限沿用已核实标准，2026 年续期与新上限仍待核实。深圳公积金上限按官方年平均工资折算，1–6 月默认按老职工下限，年内入职按所填入职月份处理。</p><p><a href="https://rsj.sh.gov.cn/tdjjf_17554/20260824/t0035_1443297.html" target="_blank" rel="noopener">上海社保</a> · <a href="https://www.shzfgjj.cn/html/newxxgk/zcwj/gfxwj/228478.html" target="_blank" rel="noopener">上海公积金</a> · <a href="https://hrss.gd.gov.cn/zwgk/gsgg/content/post_4789648.html" target="_blank" rel="noopener">广东养老</a> · <a href="https://static.nfnews.com/content/202601/16/c12083149.html" target="_blank" rel="noopener">广州税务标准（南都核实）</a> · <a href="https://gjj.gz.gov.cn/gg/tzgg/content/post_10879601.html" target="_blank" rel="noopener">广州公积金</a> · <a href="https://hrlib.ciic-cloud.cn/news/info?id=01m1jwmwrkfv9rde9yh08a3p7c" target="_blank" rel="noopener">广州9月下限（通知转载）</a> · <a href="https://hsa.sz.gov.cn/fzlm/znts/cnyc/content/post_12568243.html" target="_blank" rel="noopener">深圳医保</a> · <a href="https://www.sz.gov.cn/hdjl/ywzsk/jsj/zfgjj/content/post_12893587.html" target="_blank" rel="noopener">深圳公积金</a> · <a href="https://www.sz.gov.cn/hdjl/ywzsk/jsj/zfgjj/content/mpost_12977659.html" target="_blank" rel="noopener">深圳9月入职</a></p><p>租房提取按已符合资格、账户余额足够估算。</p></details>`);
-$('deductions').insertAdjacentHTML('beforeend',block('withdraw','提取公积金 · 租房','提取到账后，加到到手现金',
+$('deductions').insertAdjacentHTML('beforeend',block('withdraw','提取公积金 · 租房','到账后计入现金',
  
  '<p class="hint" id="withdraw-city-summary"></p><label><input type="checkbox" id="withdraw-city-different"> 公积金缴在其他城市</label><div id="withdraw-city-picker" hidden>'+field('withdraw-city','公积金缴存城市',select('withdraw-city',[['beijing','北京'],['shanghai','上海'],['guangzhou','广州'],['shenzhen','深圳'],['other','其他 / 已核准额度']]))+'</div>'+
  field('withdraw-doc','是否有租房发票？',select('withdraw-doc',[['simple','没有租房发票'],['documented','有发票，已按要求备案']]))+
