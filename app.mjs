@@ -4,7 +4,7 @@ import {renderCashFlow} from './cashflow.mjs?v=21';
 import {calculate,round,tax,limits,rates,quick} from './tax.mjs?v=21';
 import {estimateBeijing,estimateCity} from './social.mjs?v=21';
 import {withdrawal} from './withdrawal.mjs?v=21';
-const $=id=>document.getElementById(id),fmt=n=>Number(n).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}),yuan=n=>'¥ '+fmt(n);
+const $=id=>document.getElementById(id),fmt=n=>Number(n).toLocaleString('zh-CN',{minimumFractionDigits:0,maximumFractionDigits:1}),yuan=n=>'¥ '+fmt(n);
 let mode='annual',lastResult=null,socialDetails=null;
 const months=Array.from({length:12},(_,i)=>i+1);
 const opts=(selected=12)=>months.map(m=>`<option value="${m-1}" ${m===selected?'selected':''}>${m} 月</option>`).join('');
@@ -127,7 +127,7 @@ function state(){
   for(const id of ['bonus-months','bonus-base-salary'])if($(id).value===''||!$(id).validity.valid)throw Error('请填写有效的奖金月数和税前月薪。');
   s.bonus=round(val('bonus-months')*val('bonus-base-salary'));
   if(s.bonus>1000000000)throw Error('奖金总额不能超过 10 亿元。');
-  $('bonus-estimate').textContent=fmt(val('bonus-base-salary'))+' 元 × '+val('bonus-months')+' 个月 = 预计奖金 '+yuan(s.bonus);
+  $('bonus-estimate').textContent=fmt(val('bonus-base-salary'))+' 元 × '+fmt(val('bonus-months'))+' 个月 = 预计奖金 '+yuan(s.bonus);
  }
  socialDetails=null;
  if($('social-method').value==='estimate'){
@@ -171,7 +171,7 @@ function update(){
  try{
   const s=state();equityScenario();const outsideWork=s.employment&&s.bonus>0&&!s.employment[s.bonusMonth];const a=calculate(s,'separate'),b=calculate(outsideWork?{...s,employment:undefined}:s,'merged'),best=a.totalTax<=b.totalTax?'separate':'merged';
   const selected=$('method').value==='auto'?best:$('method').value;if(outsideWork&&selected==='merged')throw Error('奖金合并计税时，发放月份需属于已填写的工作时段；请调整月份，或选择奖金单独计税。');let r=selected==='separate'?a:b;const w=withdrawalState();r.withdrawal=w;r.cashReceived=round(r.months.reduce((t,m)=>t+m.net,0)+w.cash);r.months.forEach((m,i)=>{m.withdrawal=w.months[i].withdrawal;m.cashReceived=round(m.net+w.months[i].cash);});lastResult=r;$('input-error').hidden=true;
-  $('net').textContent=yuan(round(r.cashReceived-r.settlement-(r.bonusSettlement||0)));$('withdraw-result').textContent=on('withdraw-on')?'全年预计提取 '+yuan(w.total)+'；其中银行卡到账 '+yuan(w.cash)+'。'+(w.pending>0?'另有 '+yuan(w.pending)+' 本年额度未在所选日程到账，未加入本年现金。':''):'';$('total-tax').textContent=yuan(r.totalTax);$('effective').textContent=(r.gross?r.totalTax/r.gross*100:0).toFixed(2)+'%';
+  $('net').textContent=yuan(round(r.cashReceived-r.settlement-(r.bonusSettlement||0)));$('withdraw-result').textContent=on('withdraw-on')?'全年预计提取 '+yuan(w.total)+'；其中银行卡到账 '+yuan(w.cash)+'。'+(w.pending>0?'另有 '+yuan(w.pending)+' 本年额度未在所选日程到账，未加入本年现金。':''):'';$('total-tax').textContent=yuan(r.totalTax);$('effective').textContent=(r.gross?r.totalTax/r.gross*100:0).toLocaleString('zh-CN',{maximumFractionDigits:1})+'%';
   const withoutPension=calculate({...s,pension:Array(12).fill(0)},selected);
   r.pensionSaving=round(withoutPension.totalTax-r.totalTax);
   const withoutExtras=calculate({...s,pension:Array(12).fill(0),insurance:Array(12).fill(0),additional:Array(12).fill(0),medical:0,annuity:Array(12).fill(0),annuityDeduct:Array(12).fill(0),donationLimited:0,donationFull:0},selected);
@@ -183,14 +183,14 @@ function update(){
   $('breakdown').innerHTML=renderCashFlow(r,yuan);
   if(on('equity-on')&&on('equity-exact')){
    if(!on('equity-qualified'))throw Error('请先确认单位已认定该股权激励适用单独计税；不符合时应按单位申报口径处理。');
-   r=applyEquity(r,{income:val('equity-income'),paid:val('equity-paid'),cashPaid:val('equity-cash'),month:val('equity-month')});r.withdrawal=w;r.cashReceived=round(r.months.reduce((t,m)=>t+m.net,0)+w.cash);r.months.forEach((m,i)=>m.cashReceived=round(m.net+w.months[i].cash));lastResult=r;$('net').textContent=yuan(round(r.cashReceived-r.settlement-(r.bonusSettlement||0)));$('total-tax').textContent=yuan(r.totalTax);$('effective').textContent=((r.gross+r.equity.income)?r.totalTax/(r.gross+r.equity.income)*100:0).toFixed(2)+'%';
+   r=applyEquity(r,{income:val('equity-income'),paid:val('equity-paid'),cashPaid:val('equity-cash'),month:val('equity-month')});r.withdrawal=w;r.cashReceived=round(r.months.reduce((t,m)=>t+m.net,0)+w.cash);r.months.forEach((m,i)=>m.cashReceived=round(m.net+w.months[i].cash));lastResult=r;$('net').textContent=yuan(round(r.cashReceived-r.settlement-(r.bonusSettlement||0)));$('total-tax').textContent=yuan(r.totalTax);$('effective').textContent=((r.gross+r.equity.income)?r.totalTax/(r.gross+r.equity.income)*100:0).toLocaleString('zh-CN',{maximumFractionDigits:1})+'%';
    $('breakdown').innerHTML=renderCashFlow(r,yuan)+'<div class="notice">'+row('RSU / 期权 · 本年应税金额',r.equity.income)+row('股权全年单独计税',r.equity.tax)+row('股权已缴税（含扣股抵税）',r.equity.paid)+row('其中现金支付税款',r.equity.cashPaid)+row(r.equity.balance>=0?'股权税尚待支付 / 核对':'股权税超缴待核对',Math.abs(r.equity.balance))+'<p class="hint">未出售的股票价值不是银行卡现金。股权税差额与综合所得汇算分开，支付期限以单位适用政策为准。月度扣税柱图仍显示工资、副业及奖金税，股权现金税款已在所选月份到手金额扣减。</p></div>';
   }
   $('comparison').hidden=s.bonus<=0;
   $('comparison').innerHTML='<div class="section-title"><h3>年终奖怎么计税更省？</h3><span class="tag">比较全年个税</span></div><div class="compare-grid">'+[[a,'单独计税'],[b,'并入综合所得']].map(([v,n])=>`<div class="compare-option ${selected===v.method?'active':''}">${n}${selected===v.method?' · 已选':''}<strong>${yuan(v.totalTax)}</strong></div>`).join('')+'</div><div class="notice">'+(a.totalTax===b.totalTax?'两种方式的全年税额相同。':`${best==='separate'?'单独计税':'并入综合所得'}少缴 ${yuan(Math.abs(a.totalTax-b.totalTax))}。`)+ '</div>';
   renderMonth();
   renderSocial(s.salary);
-  $('formula').innerHTML=`<div class="formula-box">全年综合所得应纳税所得额 = 工资 ${yuan(r.salary)} + 副业收入额 ${yuan(r.sideTaxable)}${selected==='merged'?' + 奖金 '+yuan(s.bonus):''} − 基本减除 60,000.00 − 社保公积金 ${fmt(r.social)} − 专项附加扣除 ${fmt(r.additional+s.medical)} − 个人养老金扣除 ${fmt(r.pensionDeduct)} − 税优健康险扣除 ${fmt(r.insuranceDeduct)} − 年金扣除 ${fmt(r.annuityDeduct)} − 公益捐赠扣除 ${fmt(r.donationDeduct)}<br><strong>应税所得：${yuan(r.annualBase)} → 综合所得个税：${yuan(r.wageTax)}</strong><br>当月综合所得预扣税 = max（0，累计应税所得 × 预扣率 − 速算扣除数 − 此前累计已预扣工资税）。</div>`;
+  $('formula').innerHTML=`<div class="formula-box">全年综合所得应纳税所得额 = 工资 ${yuan(r.salary)} + 副业收入额 ${yuan(r.sideTaxable)}${selected==='merged'?' + 奖金 '+yuan(s.bonus):''} − 基本减除 60,000 − 社保公积金 ${fmt(r.social)} − 专项附加扣除 ${fmt(r.additional+s.medical)} − 个人养老金扣除 ${fmt(r.pensionDeduct)} − 税优健康险扣除 ${fmt(r.insuranceDeduct)} − 年金扣除 ${fmt(r.annuityDeduct)} − 公益捐赠扣除 ${fmt(r.donationDeduct)}<br><strong>应税所得：${yuan(r.annualBase)} → 综合所得个税：${yuan(r.wageTax)}</strong><br>当月综合所得预扣税 = max（0，累计应税所得 × 预扣率 − 速算扣除数 − 此前累计已预扣工资税）。</div>`;
  }catch(e){lastResult=null;socialDetails=null;$('input-error').hidden=false;$('input-error').textContent=e.message;$('net').textContent='请检查输入';$('total-tax').textContent='—';$('effective').textContent='—';for(const id of ['breakdown','comparison','month-summary','chart','rows','formula','social-estimate-result','withdraw-result','deposit-note','side-estimate','base-assumption'])$(id).innerHTML='';}
 }
 const cityRates={shanghai:{name:'上海',rate:10.5,note:'养老 8% + 医疗 2% + 失业 0.5%'},guangzhou:{name:'广州',rate:10.2,note:'参考估算：养老 8% + 医疗 2% + 失业 0.2%'},shenzhen:{name:'深圳',rate:10.2,note:'一档医保参考估算：养老 8% + 医疗 2% + 失业 0.2%'}};
